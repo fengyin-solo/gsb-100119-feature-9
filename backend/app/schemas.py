@@ -28,6 +28,54 @@ class EntryPayload(BaseModel):
     remark: str | None = None
 
 
+class DisposalObservation(BaseModel):
+    """单次监测或现场人工复测观测。"""
+
+    conclusion: str | None = None
+    observed_at: str | None = None
+    facility_code: str | None = None
+    facility_type: str | None = None
+    road_name: str | None = None
+    station: str | None = None
+    pump_status: str | bool | None = None
+    pump_online: bool | None = None
+    retest_status: str | None = None
+    timeout: bool | None = None
+
+    model_config = {"populate_by_name": True}
+
+
+class DisposalObservations(BaseModel):
+    """监测与人工复测分开留档；结论冲突时由服务层按现场复测裁决。"""
+
+    monitoring: dict[str, Any] | None = None
+    manual: dict[str, Any] | None = None
+
+
+class DisposalPayload(BaseModel):
+    """排水设施处置回传入参。"""
+
+    facility_code: str | None = None
+    facility_type: str | None = None
+    road_name: str | None = None
+    station: str | None = None
+    observed_at: str | None = None
+    pump_status: str | bool | None = None
+    pump_online: bool | None = None
+    retest_status: str | None = None
+    retest_timeout: bool | None = None
+    fail_once: str | None = Field(default=None, alias="simulate_fail_write")
+    observations: DisposalObservations | None = None
+
+    model_config = {"populate_by_name": True}
+
+    def to_service_dict(self) -> dict[str, Any]:
+        data = self.model_dump(exclude_none=True, by_alias=False)
+        if self.observations:
+            data["observations"] = self.observations.model_dump(exclude_none=True)
+        return data
+
+
 
 class RoadSectionEntry(BaseModel):
     """管养路段明细结构。"""
