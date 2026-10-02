@@ -74,3 +74,34 @@ npm run dev
   `backend/app/routers/<模块>.py`，业务规则在 `backend/app/services/<模块>.py`。
 - 列表接口统一返回 `{ items, total, page, size }`，动作接口统一返回 `{ ok, message }`。
 - 状态流转只允许在 `app/services` 里改，路由层不做业务判断。
+
+## 排水设施处置闭环
+
+排水设施在普通台账动作之外，另有处置回传闭环（`app/services/drainage_disposal.py`）：
+
+- **分支互斥**：设施编号缺失 `FACILITY_MISSING`、无积水 `NO_WATER`、泵站离线
+  `PUMP_OFFLINE`、复测超时 `RECHECK_TIMEOUT` 各自进入「可复位」分支，台账状态、
+  待办类型、清单状态都带边界口径，不与 `NORMAL_DRAINAGE` 正常排水混用。
+- **现场复测优先**：监测与人工复测冲突时采信人工复测，两侧观测按各自观测时点分别
+  留档（`drainage_observation`），互不覆盖。
+- **三表同事务**：处置结论在一个事务内写入排水设施台账 `drainage`、设施整改待办
+  `drainage_rectify_todo`、路段监测清单 `road_section_monitor`（另含观测历史与
+  处置主记录），任一步失败整批回滚，只留下中断主记录。
+- **中断续传**：保存中断保留原因码（`CLIENT_OFFLINE` 或
+  `DB_<阶段>_FAILED@ledger/todo/monitor/...`），`POST
+  /api/drainage/disposals/{id}/resume` 从失败分支继续；重复续传安全。
+- **幂等回传**：按「设施编号 + 观测时间」幂等，重复回传返回首次结论不重复落库；
+  复位后的旧记录不再参与幂等。
+- 可复位分支完成后可 `POST /api/drainage/disposals/{id}/reset` 复位，待办与清单
+  同步关闭；正常排水与未续传完成的中断单不允许复位。
+
+回传时传 `模拟中断=true` 或 `模拟落库失败阶段=ledger|todo|monitor|observation|disposal`
+可演练中断回滚与续传。
+
+契约测试（仅依赖标准库，未装 pytest 也能跑）：
+
+```bash
+cd backend
+python3 -m tests.test_drainage_disposal
+```
+
